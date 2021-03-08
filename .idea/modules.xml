@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/kafka-as-a-datahub.iml" filepath="$PROJECT_DIR$/.idea/kafka-as-a-datahub.iml" />
+      <module fileurl="file://$PROJECT_DIR$/kafka-clients/kafka-clients.iml" filepath="$PROJECT_DIR$/kafka-clients/kafka-clients.iml" />
+      <module fileurl="file://$PROJECT_DIR$/kafka-stream/kafka-streams.iml" filepath="$PROJECT_DIR$/kafka-stream/kafka-streams.iml" />
+    </modules>
+  </component>
+</project>
