@@ -31,7 +31,7 @@ object WebServer extends PlayJsonSupport {
 
               complete(
                 // TODO: output a list of VisitCountResponse objects
-                ???
+                List(VisitCountResponse("", 0))
               )
             case "1m" =>
               // TODO: load the store containing the visits count of the last minute and query it to
@@ -40,7 +40,7 @@ object WebServer extends PlayJsonSupport {
 
               complete(
                 // TODO: output a list of VisitCountResponse objects
-                ???
+                List(VisitCountResponse("", 0))
               )
             case "5m" =>
               // TODO: load the store containing the visits count of the last five minutes and query it to
@@ -49,7 +49,7 @@ object WebServer extends PlayJsonSupport {
 
               complete(
                 // TODO: output a list of VisitCountResponse objects
-                ???
+                List(VisitCountResponse("", 0))
               )
             case _ =>
               // unhandled period asked
@@ -66,7 +66,7 @@ object WebServer extends PlayJsonSupport {
 
           complete(
             // TODO: output a list of MeanLatencyForURLResponse objects
-            ???
+            List(MeanLatencyForURLResponse("", 0))
           )
         }
       }
