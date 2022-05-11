@@ -51,7 +51,7 @@
         <dependency>
             <groupId>de.heikoseeberger</groupId>
             <artifactId>akka-http-play-json_${scala.major.version}</artifactId>
-            <version>1.31.0</version>
+            <version>1.39.2</version>
         </dependency>
 
         <dependency>
