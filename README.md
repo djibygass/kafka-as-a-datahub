@@ -1,6 +1,5 @@
-# Kafka as a Datahub - Exercises skeletons
+# Kafka as a Datahub - Skeleton
 
 ## Description
 
-This repository has two skeleton meant to be used with the exercises at
-https://github.com/nekonyuu/kafka-as-a-datahub-exercices.
+This repository has a skeleton meant to be used for the project.
