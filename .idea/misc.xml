@@ -3,7 +3,6 @@
   <component name="MavenProjectsManager">
     <option name="originalFiles">
       <list>
-        <option value="$PROJECT_DIR$/kafka-clients/pom.xml" />
         <option value="$PROJECT_DIR$/kafka-stream/pom.xml" />
       </list>
     </option>
