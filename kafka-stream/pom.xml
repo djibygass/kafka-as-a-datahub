@@ -12,9 +12,9 @@
         <maven-shade-plugin.version>3.2.1</maven-shade-plugin.version>
 
         <akka.version>2.6.19</akka.version>
-        <akka-http.version>10.2.9</akka-http.version>
+        <akka-http.version>10.5.0</akka-http.version>
 
-        <slf4j.version>1.7.28</slf4j.version>
+        <slf4j.version>2.0.5</slf4j.version>
         <typesafe-config.version>1.4.2</typesafe-config.version>
         <play-json.version>2.9.4</play-json.version>
         <scalatest.version>3.0.8</scalatest.version>
@@ -81,9 +81,16 @@
         </dependency>
 
         <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-streams-test-utils</artifactId>
+            <version>3.4.0</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
             <groupId>io.github.azhur</groupId>
             <artifactId>kafka-serde-play-json_${scala.major.version}</artifactId>
-            <version>0.6.5</version>
+            <version>0.8.1</version>
         </dependency>
 
         <dependency>
