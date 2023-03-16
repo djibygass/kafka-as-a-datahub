@@ -8,10 +8,6 @@ import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
 import org.esgi.project.api.models.{MeanLatencyForURLResponse, VisitCountResponse}
 import org.esgi.project.streaming.models.MeanLatencyForURL
 
-/** -------------------
-  * Part.3 of exercise: Interactive Queries
-  * -------------------
-  */
 object WebServer extends PlayJsonSupport {
   def routes(streams: KafkaStreams): Route = {
     concat(
