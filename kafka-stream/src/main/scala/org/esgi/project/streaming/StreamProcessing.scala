@@ -4,11 +4,15 @@ import io.github.azhur.kafka.serde.PlayJsonSupport
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.streams.scala._
+import org.apache.kafka.streams.scala.kstream.{KTable, Materialized}
 import org.apache.kafka.streams.{KafkaStreams, StreamsConfig}
 
 import java.util.Properties
 
 object StreamProcessing extends PlayJsonSupport {
+
+  import org.apache.kafka.streams.scala.ImplicitConversions._
+  import org.apache.kafka.streams.scala.serialization.Serdes._
 
   val applicationName = s"some-application-name"
 
@@ -16,6 +20,16 @@ object StreamProcessing extends PlayJsonSupport {
 
   // defining processing graph
   val builder: StreamsBuilder = new StreamsBuilder
+
+  val wordTopic = "words"
+  val wordCountStoreName = "word-count-store"
+
+  val words = builder.stream[String, String](wordTopic)
+
+  val wordCounts: KTable[String, Long] = words
+    .flatMapValues(textLine => textLine.toLowerCase.split("\\W+"))
+    .groupBy((_, word) => word)
+    .count()(Materialized.as(wordCountStoreName))
 
   def run(): KafkaStreams = {
     val streams: KafkaStreams = new KafkaStreams(builder.build(), props)
