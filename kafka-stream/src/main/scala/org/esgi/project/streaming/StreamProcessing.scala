@@ -4,8 +4,10 @@ import io.github.azhur.kafka.serde.PlayJsonSupport
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.streams.scala._
-import org.apache.kafka.streams.scala.kstream.{KTable, Materialized}
+import org.apache.kafka.streams.scala.kstream.{KStream, KTable, Materialized}
 import org.apache.kafka.streams.{KafkaStreams, StreamsConfig}
+import org.apache.kafka.streams.state.Stores
+import play.api.libs.json._
 
 import java.util.Properties
 
@@ -14,22 +16,29 @@ object StreamProcessing extends PlayJsonSupport {
   import org.apache.kafka.streams.scala.ImplicitConversions._
   import org.apache.kafka.streams.scala.serialization.Serdes._
 
-  val applicationName = s"some-application-name"
+  val applicationName = s"trade-statistics-app"
 
   private val props: Properties = buildProperties
 
   // defining processing graph
   val builder: StreamsBuilder = new StreamsBuilder
 
-  val wordTopic = "words"
-  val wordCountStoreName = "word-count-store"
+  val tradeTopic = "trades"
+  val statsStoreName = "trade-stats-store"
 
-  val words = builder.stream[String, String](wordTopic)
+  case class TradeEvent(e: String, E: Long, s: String, p: String, q: String, T: Long)
 
-  val wordCounts: KTable[String, Long] = words
-    .flatMapValues(textLine => textLine.toLowerCase.split("\\W+"))
-    .groupBy((_, word) => word)
-    .count()(Materialized.as(wordCountStoreName))
+  implicit val tradeEventFormat: OFormat[TradeEvent] = Json.format[TradeEvent]
+
+  val trades: KStream[String, String] = builder.stream[String, String](tradeTopic)
+
+  val tradeEvents: KStream[String, TradeEvent] = trades
+    .mapValues(value => Json.parse(value).as[TradeEvent])
+
+  // Compute number of trades per pair
+  val tradesByPair: KTable[String, Long] = tradeEvents
+    .groupBy((_, trade) => trade.s)
+    .count()(Materialized.as(statsStoreName))
 
   def run(): KafkaStreams = {
     val streams: KafkaStreams = new KafkaStreams(builder.build(), props)
