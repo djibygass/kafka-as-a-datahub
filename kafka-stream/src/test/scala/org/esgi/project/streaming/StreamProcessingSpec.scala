@@ -32,24 +32,40 @@
 //  test("Topology should compute the number of trades per pair per minute") {
 //    // Given
 //    val trades = List(
-//      Json.stringify(Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10000", "q" -> "0.1", "T" -> 123456789L)),
-//      Json.stringify(Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10020", "q" -> "0.2", "T" -> 123456789L)),
-//      Json.stringify(Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "ETHUSD", "p" -> "200", "q" -> "1", "T" -> 123456789L))
+//      new TestRecord[String, String](
+//        "key",
+//        Json.stringify(
+//          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10000", "q" -> "0.1", "T" -> 123456789L)
+//        ),
+//        Instant.ofEpochMilli(0L)
+//      ),
+//      new TestRecord[String, String](
+//        "key",
+//        Json.stringify(
+//          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10020", "q" -> "0.2", "T" -> 123456789L)
+//        ),
+//        Instant.ofEpochMilli(1L)
+//      ),
+//      new TestRecord[String, String](
+//        "key",
+//        Json.stringify(
+//          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "ETHUSD", "p" -> "200", "q" -> "1", "T" -> 123456789L)
+//        ),
+//        Instant.ofEpochMilli(2L)
+//      )
 //    )
 //
 //    val tradeTopic = topologyTestDriver.createInputTopic(
 //      StreamProcessing.tradeTopic,
 //      Serdes.stringSerde.serializer(),
-//      Serdes.stringSerde.serializer(),
-//      Instant.ofEpochMilli(0L), // Start timestamp
-//      java.time.Duration.ofMinutes(1) // Advance each record by 1 minute
+//      Serdes.stringSerde.serializer()
 //    )
 //
 //    val tradeCountsStore: WindowStore[String, Long] = topologyTestDriver
-//      .getWindowStore[String, Long]("trade-counts-store")
+//      .getWindowStore("trade-counts-store")
 //
 //    // When
-//    tradeTopic.pipeRecordList(trades.map(trade => new TestRecord[String, String](null, trade)).asJava)
+//    tradeTopic.pipeRecordList(trades.asJava)
 //
 //    // Vérifiez le contenu du magasin d'état après l'envoi des messages
 //    val tradeCountsIterator = tradeCountsStore.fetch("BTCUSD", Instant.ofEpochMilli(0L), Instant.ofEpochMilli(60000L))
@@ -61,9 +77,109 @@
 //    assert(tradeCounts.map(_.value).sum == 2, "Expected 2 trades for BTCUSD")
 //  }
 //
-//  // Tests similaires pour les autres statistiques...
+//  test("Topology should compute the average price per pair per minute") {
+//    // Given
+//    val trades = List(
+//      new TestRecord[String, String](
+//        "key",
+//        Json.stringify(
+//          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10000", "q" -> "0.1", "T" -> 123456789L)
+//        ),
+//        Instant.ofEpochMilli(0L)
+//      ),
+//      new TestRecord[String, String](
+//        "key",
+//        Json.stringify(
+//          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10020", "q" -> "0.2", "T" -> 123456789L)
+//        ),
+//        Instant.ofEpochMilli(1L)
+//      ),
+//      new TestRecord[String, String](
+//        "key",
+//        Json.stringify(
+//          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "ETHUSD", "p" -> "200", "q" -> "1", "T" -> 123456789L)
+//        ),
+//        Instant.ofEpochMilli(2L)
+//      )
+//    )
+//
+//    val tradeTopic = topologyTestDriver.createInputTopic(
+//      StreamProcessing.tradeTopic,
+//      Serdes.stringSerde.serializer(),
+//      Serdes.stringSerde.serializer()
+//    )
+//
+//    val averagePriceStore: WindowStore[String, Double] = topologyTestDriver
+//      .getWindowStore("total-prices-and-counts-store")
+//
+//    // When
+//    tradeTopic.pipeRecordList(trades.asJava)
+//
+//    // Vérifiez le contenu du magasin d'état après l'envoi des messages
+//    val averagePriceIterator = averagePriceStore.fetch("BTCUSD", Instant.ofEpochMilli(0L), Instant.ofEpochMilli(60000L))
+//    val averagePrices = averagePriceIterator.asScala.toList
+//
+//    println(s"Average prices for BTCUSD: ${averagePrices.map(_.value).mkString(", ")}")
+//
+//    // Then
+//    assert(averagePrices.map(_.value).sum / averagePrices.size == 10010, "Expected average price of 10010 for BTCUSD")
+//  }
+//
+//  test("Topology should compute OHLC prices and volume per pair per minute") {
+//    // Given
+//    val trades = List(
+//      new TestRecord[String, String](
+//        "key",
+//        Json.stringify(
+//          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10000", "q" -> "0.1", "T" -> 123456789L)
+//        ),
+//        Instant.ofEpochMilli(0L)
+//      ),
+//      new TestRecord[String, String](
+//        "key",
+//        Json.stringify(
+//          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10020", "q" -> "0.2", "T" -> 123456789L)
+//        ),
+//        Instant.ofEpochMilli(1L)
+//      ),
+//      new TestRecord[String, String](
+//        "key",
+//        Json.stringify(
+//          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "ETHUSD", "p" -> "200", "q" -> "1", "T" -> 123456789L)
+//        ),
+//        Instant.ofEpochMilli(2L)
+//      )
+//    )
+//
+//    val tradeTopic = topologyTestDriver.createInputTopic(
+//      StreamProcessing.tradeTopic,
+//      Serdes.stringSerde.serializer(),
+//      Serdes.stringSerde.serializer()
+//    )
+//
+//    val ohlcStore: WindowStore[String, (Double, Double, Double, Double, Double)] = topologyTestDriver
+//      .getWindowStore("ohlc-and-volume-store")
+//
+//    // When
+//    tradeTopic.pipeRecordList(trades.asJava)
+//
+//    // Vérifiez le contenu du magasin d'état après l'envoi des messages
+//    val ohlcIterator = ohlcStore.fetch("BTCUSD", Instant.ofEpochMilli(0L), Instant.ofEpochMilli(60000L))
+//    val ohlc = ohlcIterator.asScala.toList
+//
+//    println(s"OHLC for BTCUSD: ${ohlc.map(_.value).mkString(", ")}")
+//
+//    // Then
+//    val ohlcValues = ohlc.map(_.value)
+//    assert(ohlcValues.nonEmpty, "Expected non-empty OHLC values for BTCUSD")
+//    val (open, close, low, high, volume) = ohlcValues.head
+//    assert(open == 10000, s"Expected open price of 10000 but got $open")
+//    assert(close == 10020, s"Expected close price of 10020 but got $close")
+//    assert(low == 10000, s"Expected low price of 10000 but got $low")
+//    assert(high == 10020, s"Expected high price of 10020 but got $high")
+//    assert(volume == 0.3, s"Expected volume of 0.3 but got $volume")
+//  }
 //}
-
 package org.esgi.project.streaming
 
 import io.github.azhur.kafka.serde.PlayJsonSupport
@@ -143,5 +259,110 @@ class StreamProcessingSpec extends AnyFunSuite with PlayJsonSupport with BeforeA
     assert(tradeCounts.map(_.value).sum == 2, "Expected 2 trades for BTCUSD")
   }
 
-  // Tests similaires pour les autres statistiques...
+  test("Topology should compute the average price per pair per minute") {
+    // Given
+    val trades = List(
+      new TestRecord[String, String](
+        "key",
+        Json.stringify(
+          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10000", "q" -> "0.1", "T" -> 123456789L)
+        ),
+        Instant.ofEpochMilli(0L)
+      ),
+      new TestRecord[String, String](
+        "key",
+        Json.stringify(
+          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10020", "q" -> "0.2", "T" -> 123456789L)
+        ),
+        Instant.ofEpochMilli(1L)
+      ),
+      new TestRecord[String, String](
+        "key",
+        Json.stringify(
+          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "ETHUSD", "p" -> "200", "q" -> "1", "T" -> 123456789L)
+        ),
+        Instant.ofEpochMilli(2L)
+      )
+    )
+
+    val tradeTopic = topologyTestDriver.createInputTopic(
+      StreamProcessing.tradeTopic,
+      Serdes.stringSerde.serializer(),
+      Serdes.stringSerde.serializer()
+    )
+
+    val totalPricesAndCountsStore: WindowStore[String, (Double, Long)] = topologyTestDriver
+      .getWindowStore("total-prices-and-counts-store")
+
+    // When
+    tradeTopic.pipeRecordList(trades.asJava)
+
+    // Vérifiez le contenu du magasin d'état après l'envoi des messages
+    val totalPricesAndCountsIterator =
+      totalPricesAndCountsStore.fetch("BTCUSD", Instant.ofEpochMilli(0L), Instant.ofEpochMilli(60000L))
+    val totalPricesAndCounts = totalPricesAndCountsIterator.asScala.toList
+
+    println(s"Total prices and counts for BTCUSD: ${totalPricesAndCounts.map(_.value).mkString(", ")}")
+
+    // Then
+    val totalPrices = totalPricesAndCounts.map(_.value._1)
+    val totalCounts = totalPricesAndCounts.map(_.value._2)
+    val averagePrice = if (totalCounts.sum > 0) totalPrices.sum / totalCounts.sum else 0.0
+    assert(averagePrice == 10010.0, s"Expected average price of 10010 but got $averagePrice")
+  }
+
+  test("Topology should compute OHLC prices and volume per pair per minute") {
+    // Given
+    val trades = List(
+      new TestRecord[String, String](
+        "key",
+        Json.stringify(
+          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10000", "q" -> "0.1", "T" -> 123456789L)
+        ),
+        Instant.ofEpochMilli(0L)
+      ),
+      new TestRecord[String, String](
+        "key",
+        Json.stringify(
+          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10020", "q" -> "0.2", "T" -> 123456789L)
+        ),
+        Instant.ofEpochMilli(1L)
+      ),
+      new TestRecord[String, String](
+        "key",
+        Json.stringify(
+          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "ETHUSD", "p" -> "200", "q" -> "1", "T" -> 123456789L)
+        ),
+        Instant.ofEpochMilli(2L)
+      )
+    )
+
+    val tradeTopic = topologyTestDriver.createInputTopic(
+      StreamProcessing.tradeTopic,
+      Serdes.stringSerde.serializer(),
+      Serdes.stringSerde.serializer()
+    )
+
+    val ohlcStore: WindowStore[String, (Double, Double, Double, Double, Double)] = topologyTestDriver
+      .getWindowStore("ohlc-and-volume-store")
+
+    // When
+    tradeTopic.pipeRecordList(trades.asJava)
+
+    // Vérifiez le contenu du magasin d'état après l'envoi des messages
+    val ohlcIterator = ohlcStore.fetch("BTCUSD", Instant.ofEpochMilli(0L), Instant.ofEpochMilli(60000L))
+    val ohlc = ohlcIterator.asScala.toList
+
+    println(s"OHLC for BTCUSD: ${ohlc.map(_.value).mkString(", ")}")
+
+    // Then
+    val ohlcValues = ohlc.map(_.value)
+    assert(ohlcValues.nonEmpty, "Expected non-empty OHLC values for BTCUSD")
+    val (open, close, low, high, volume) = ohlcValues.head
+    assert(open == 10000, s"Expected open price of 10000 but got $open")
+    assert(close == 10020, s"Expected close price of 10020 but got $close")
+    assert(low == 10000, s"Expected low price of 10000 but got $low")
+    assert(high == 10020, s"Expected high price of 10020 but got $high")
+    assert(math.abs(volume - 0.3) < 1e-6, s"Expected volume of 0.3 but got $volume")
+  }
 }
