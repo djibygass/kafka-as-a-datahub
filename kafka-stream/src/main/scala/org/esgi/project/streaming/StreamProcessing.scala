@@ -428,6 +428,25 @@ object StreamProcessing extends PlayJsonSupport {
       )
     )
 
+  // Compute volume per pair per hour
+  val hourlyVolume: KTable[Windowed[String], Double] = tradeEvents
+    .groupBy((_, trade) => trade.s)
+    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofHours(1)))
+    .aggregate[Double](
+      initializer = 0.0
+    )(
+      aggregator = (key: String, trade: TradeEvent, aggregate: Double) => aggregate + trade.q.toDouble
+    )(
+      Materialized.as(
+        Stores.persistentWindowStore(
+          "hourly-volume-store",
+          Duration.ofHours(1),
+          Duration.ofHours(1),
+          false
+        )
+      )
+    )
+
   def run(): KafkaStreams = {
     val streams: KafkaStreams = new KafkaStreams(builder.build(), props)
     streams.start()

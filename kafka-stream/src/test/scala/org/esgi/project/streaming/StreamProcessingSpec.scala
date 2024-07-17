@@ -109,20 +109,24 @@
 //      Serdes.stringSerde.serializer()
 //    )
 //
-//    val averagePriceStore: WindowStore[String, Double] = topologyTestDriver
+//    val totalPricesAndCountsStore: WindowStore[String, (Double, Long)] = topologyTestDriver
 //      .getWindowStore("total-prices-and-counts-store")
 //
 //    // When
 //    tradeTopic.pipeRecordList(trades.asJava)
 //
 //    // Vérifiez le contenu du magasin d'état après l'envoi des messages
-//    val averagePriceIterator = averagePriceStore.fetch("BTCUSD", Instant.ofEpochMilli(0L), Instant.ofEpochMilli(60000L))
-//    val averagePrices = averagePriceIterator.asScala.toList
+//    val totalPricesAndCountsIterator =
+//      totalPricesAndCountsStore.fetch("BTCUSD", Instant.ofEpochMilli(0L), Instant.ofEpochMilli(60000L))
+//    val totalPricesAndCounts = totalPricesAndCountsIterator.asScala.toList
 //
-//    println(s"Average prices for BTCUSD: ${averagePrices.map(_.value).mkString(", ")}")
+//    println(s"Total prices and counts for BTCUSD: ${totalPricesAndCounts.map(_.value).mkString(", ")}")
 //
 //    // Then
-//    assert(averagePrices.map(_.value).sum / averagePrices.size == 10010, "Expected average price of 10010 for BTCUSD")
+//    val totalPrices = totalPricesAndCounts.map(_.value._1)
+//    val totalCounts = totalPricesAndCounts.map(_.value._2)
+//    val averagePrice = if (totalCounts.sum > 0) totalPrices.sum / totalCounts.sum else 0.0
+//    assert(averagePrice == 10010.0, s"Expected average price of 10010 but got $averagePrice")
 //  }
 //
 //  test("Topology should compute OHLC prices and volume per pair per minute") {
@@ -177,9 +181,10 @@
 //    assert(close == 10020, s"Expected close price of 10020 but got $close")
 //    assert(low == 10000, s"Expected low price of 10000 but got $low")
 //    assert(high == 10020, s"Expected high price of 10020 but got $high")
-//    assert(volume == 0.3, s"Expected volume of 0.3 but got $volume")
+//    assert(math.abs(volume - 0.3) < 1e-6, s"Expected volume of 0.3 but got $volume")
 //  }
 //}
+
 package org.esgi.project.streaming
 
 import io.github.azhur.kafka.serde.PlayJsonSupport
@@ -364,5 +369,61 @@ class StreamProcessingSpec extends AnyFunSuite with PlayJsonSupport with BeforeA
     assert(low == 10000, s"Expected low price of 10000 but got $low")
     assert(high == 10020, s"Expected high price of 10020 but got $high")
     assert(math.abs(volume - 0.3) < 1e-6, s"Expected volume of 0.3 but got $volume")
+  }
+
+  test("Topology should compute volume per pair per hour") {
+    // Given
+    val trades = List(
+      new TestRecord[String, String](
+        "key",
+        Json.stringify(
+          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10000", "q" -> "0.1", "T" -> 123456789L)
+        ),
+        Instant.ofEpochMilli(0L)
+      ),
+      new TestRecord[String, String](
+        "key",
+        Json.stringify(
+          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10020", "q" -> "0.2", "T" -> 123456789L)
+        ),
+        Instant.ofEpochMilli(1L)
+      ),
+      new TestRecord[String, String](
+        "key",
+        Json.stringify(
+          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "ETHUSD", "p" -> "200", "q" -> "1", "T" -> 123456789L)
+        ),
+        Instant.ofEpochMilli(2L)
+      ),
+      new TestRecord[String, String](
+        "key",
+        Json.stringify(
+          Json.obj("e" -> "trade", "E" -> 123456789L, "s" -> "BTCUSD", "p" -> "10000", "q" -> "0.3", "T" -> 123456789L)
+        ),
+        Instant.ofEpochMilli(3600000L) // After one hour
+      )
+    )
+
+    val tradeTopic = topologyTestDriver.createInputTopic(
+      StreamProcessing.tradeTopic,
+      Serdes.stringSerde.serializer(),
+      Serdes.stringSerde.serializer()
+    )
+
+    val hourlyVolumeStore: WindowStore[String, Double] = topologyTestDriver
+      .getWindowStore("hourly-volume-store")
+
+    // When
+    tradeTopic.pipeRecordList(trades.asJava)
+
+    // Vérifiez le contenu du magasin d'état après l'envoi des messages
+    val volumeIterator = hourlyVolumeStore.fetch("BTCUSD", Instant.ofEpochMilli(0L), Instant.ofEpochMilli(7200000L))
+    val volumes = volumeIterator.asScala.toList
+
+    println(s"Hourly volume for BTCUSD: ${volumes.map(kv => s"[${kv.key}, ${kv.value}]").mkString(", ")}")
+
+    // Then
+    val totalVolume = volumes.map(_.value).sum
+    assert(math.abs(totalVolume - 0.6) < 1e-6, s"Expected total volume of 0.6 but got $totalVolume")
   }
 }
