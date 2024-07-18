@@ -31,6 +31,7 @@ object StreamProcessing extends PlayJsonSupport {
   val tradeVolumePerMinuteStoreName = "trade-volume-per-minute-store"
   val tradeVolumePerHourStoreName = "trade-volume-per-hour-store"
   val averagePricePerMinuteStoreName = "average-price-per-minute-store"
+  val ohlcPerMinuteStoreName = "ohlc-per-minute-store"
 
   val trades: KStream[String, Trade] = builder.stream[String, Trade](tradeTopic)
 
@@ -69,6 +70,20 @@ object StreamProcessing extends PlayJsonSupport {
 
   val averagePricesPerMinute: KTable[Windowed[String], Double] = totalPricesAndCounts
     .mapValues { case (totalPrice, count) => totalPrice / count }
+
+  // Calculate OHLC (Open, High, Low, Close) per symbol per minute
+  val ohlcPerMinute: KTable[Windowed[String], (Double, Double, Double, Double)] = trades
+    .groupBy((_, trade) => trade.s)
+    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)))
+    .aggregate[(Double, Double, Double, Double)](
+      (Double.MaxValue, Double.MinValue, Double.MaxValue, Double.MinValue)
+    )((_, trade, aggregate) => {
+      val openPrice = if (aggregate._1 == Double.MaxValue) trade.p.toDouble else aggregate._1
+      val highPrice = Math.max(aggregate._2, trade.p.toDouble)
+      val lowPrice = Math.min(aggregate._3, trade.p.toDouble)
+      val closePrice = trade.p.toDouble
+      (openPrice, highPrice, lowPrice, closePrice)
+    })(Materialized.as(ohlcPerMinuteStoreName))
 
   def run(): KafkaStreams = {
     val streams: KafkaStreams = new KafkaStreams(builder.build(), props)

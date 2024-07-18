@@ -24,6 +24,7 @@ class StreamProcessingSpec extends AnyFunSuite with PlayJsonSupport with BeforeA
   var tradeVolumePerMinuteStore: ReadOnlyWindowStore[String, ValueAndTimestamp[Double]] = _
   var tradeVolumePerHourStore: ReadOnlyWindowStore[String, ValueAndTimestamp[Double]] = _
   var averagePricePerMinuteStore: ReadOnlyWindowStore[String, ValueAndTimestamp[Double]] = _
+  var ohlcPerMinuteStore: ReadOnlyWindowStore[String, ValueAndTimestamp[(Double, Double, Double, Double)]] = _
 
   override def beforeEach(): Unit = {
     // Initialize the TopologyTestDriver and other resources before each test
@@ -62,6 +63,11 @@ class StreamProcessingSpec extends AnyFunSuite with PlayJsonSupport with BeforeA
     averagePricePerMinuteStore = topologyTestDriver
       .getTimestampedWindowStore[String, Double](
         StreamProcessing.averagePricePerMinuteStoreName
+      )
+
+    ohlcPerMinuteStore = topologyTestDriver
+      .getTimestampedWindowStore[String, (Double, Double, Double, Double)](
+        StreamProcessing.ohlcPerMinuteStoreName
       )
   }
 
@@ -263,6 +269,54 @@ class StreamProcessingSpec extends AnyFunSuite with PlayJsonSupport with BeforeA
     val averagePricesPerMinuteETHBTC = averagePricePerMinuteStore.fetch("ETHBTC", fromTime, toTime).asScala.toList
     assert(averagePricesPerMinuteETHBTC.size == 1) // one window
     assert(Math.abs(averagePricesPerMinuteETHBTC.head.value.value() - 0.004) < 0.0001)
+  }
+
+  test("Topology should compute correct OHLC per symbol per minute") {
+    // Given
+    val now: Instant = Instant.now().truncatedTo(ChronoUnit.MINUTES)
+    val nowPlusOneMinute = now.plus(Duration.ofMinutes(1))
+
+    val trades: List[(Trade, Instant)] = List(
+      (
+        Trade("trade", 123456785000L, "BNBBTC", 12345, "0.001", "100", 88, 50, 123456785000L, true, true),
+        now
+      ),
+      (
+        Trade("trade", 123456785500L, "BNBBTC", 12346, "0.002", "150", 89, 51, 123456785500L, false, true),
+        now.plus(Duration.ofSeconds(30))
+      ),
+      (
+        Trade("trade", 123456786000L, "BNBBTC", 12347, "0.0005", "200", 90, 52, 123456786000L, true, true),
+        now.plus(Duration.ofSeconds(45))
+      ),
+      (
+        Trade("trade", 123456791000L, "BNBBTC", 12348, "0.003", "250", 91, 53, 123456791000L, true, true),
+        nowPlusOneMinute
+      ),
+      (
+        Trade("trade", 123456792000L, "BNBBTC", 12349, "0.0025", "300", 92, 54, 123456792000L, false, true),
+        nowPlusOneMinute.plus(Duration.ofSeconds(30))
+      )
+    )
+
+    // When
+    tradeTopic.pipeRecordList(
+      trades.map { case (trade, ts) => new TestRecord(trade.s, trade, ts) }.asJava
+    )
+
+    // Then
+    val fromTime = now
+    val toTime = nowPlusOneMinute.plus(Duration.ofMinutes(1))
+
+    // Fetch records from the minute window store
+    val ohlcPerMinuteBNBBTC = ohlcPerMinuteStore.fetch("BNBBTC", fromTime, toTime).asScala.toList
+    assert(ohlcPerMinuteBNBBTC.size == 2) // two windows with trades
+    assert(
+      ohlcPerMinuteBNBBTC(0).value.value() == (0.001, 0.002, 0.0005, 0.0005)
+    ) // (open, high, low, close) for first window
+    assert(
+      ohlcPerMinuteBNBBTC(1).value.value() == (0.003, 0.003, 0.0025, 0.0025)
+    ) // (open, high, low, close) for second window
   }
 
 }
