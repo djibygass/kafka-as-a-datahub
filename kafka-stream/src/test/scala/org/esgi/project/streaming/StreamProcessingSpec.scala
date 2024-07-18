@@ -21,6 +21,8 @@ class StreamProcessingSpec extends AnyFunSuite with PlayJsonSupport with BeforeA
   var tradeTopic: TestInputTopic[String, Trade] = _
   var tradeCountStore: KeyValueStore[String, Long] = _
   var tradeCountPerMinuteStore: ReadOnlyWindowStore[String, ValueAndTimestamp[Long]] = _
+  var tradeVolumePerMinuteStore: ReadOnlyWindowStore[String, ValueAndTimestamp[Double]] = _
+  var tradeVolumePerHourStore: ReadOnlyWindowStore[String, ValueAndTimestamp[Double]] = _
 
   override def beforeEach(): Unit = {
     // Initialize the TopologyTestDriver and other resources before each test
@@ -44,6 +46,16 @@ class StreamProcessingSpec extends AnyFunSuite with PlayJsonSupport with BeforeA
     tradeCountPerMinuteStore = topologyTestDriver
       .getTimestampedWindowStore[String, Long](
         StreamProcessing.tradeCountPerMinuteStoreName
+      )
+
+    tradeVolumePerMinuteStore = topologyTestDriver
+      .getTimestampedWindowStore[String, Double](
+        StreamProcessing.tradeVolumePerMinuteStoreName
+      )
+
+    tradeVolumePerHourStore = topologyTestDriver
+      .getTimestampedWindowStore[String, Double](
+        StreamProcessing.tradeVolumePerHourStoreName
       )
   }
 
@@ -114,6 +126,93 @@ class StreamProcessingSpec extends AnyFunSuite with PlayJsonSupport with BeforeA
     val tradeCountPerMinuteETHBTC = tradeCountPerMinuteStore.fetch("ETHBTC", fromTime, toTime).asScala.toList
     assert(tradeCountPerMinuteETHBTC.size == 1) // one window
     assert(tradeCountPerMinuteETHBTC.head.value.value() == 1) // one trade in the first minute
+  }
+
+  test("Topology should compute correct traded volume per symbol per minute") {
+    // Given
+    val now: Instant = Instant.now().truncatedTo(ChronoUnit.MINUTES)
+    val nowPlusOneMinute = now.plus(Duration.ofMinutes(1))
+
+    val trades: List[(Trade, Instant)] = List(
+      (
+        Trade("trade", 123456785000L, "BNBBTC", 12345, "0.001", "100", 88, 50, 123456785000L, true, true),
+        now
+      ),
+      (
+        Trade("trade", 123456785500L, "BNBBTC", 12346, "0.002", "150", 89, 51, 123456785500L, false, true),
+        now.plus(Duration.ofSeconds(30))
+      ),
+      (
+        Trade("trade", 123456791000L, "BNBBTC", 12347, "0.003", "200", 90, 52, 123456791000L, true, true),
+        nowPlusOneMinute
+      ),
+      (
+        Trade("trade", 123456785000L, "ETHBTC", 12348, "0.004", "250", 91, 53, 123456785000L, true, true),
+        nowPlusOneMinute.plus(Duration.ofSeconds(30))
+      )
+    )
+
+    // When
+    tradeTopic.pipeRecordList(
+      trades.map { case (trade, ts) => new TestRecord(trade.s, trade, ts) }.asJava
+    )
+
+    // Then
+    val fromTime = now
+    val toTime = nowPlusOneMinute.plus(Duration.ofMinutes(1))
+
+    // Fetch records from the minute window store
+    val tradeVolumePerMinuteBNBBTC = tradeVolumePerMinuteStore.fetch("BNBBTC", fromTime, toTime).asScala.toList
+    assert(tradeVolumePerMinuteBNBBTC.size == 2) // two windows with trades
+    assert(Math.abs(tradeVolumePerMinuteBNBBTC(0).value.value() - 0.003) < 0.0001) // 0.001 + 0.002
+    assert(Math.abs(tradeVolumePerMinuteBNBBTC(1).value.value() - 0.003) < 0.0001) // 0.003
+
+    val tradeVolumePerMinuteETHBTC = tradeVolumePerMinuteStore.fetch("ETHBTC", fromTime, toTime).asScala.toList
+    assert(tradeVolumePerMinuteETHBTC.size == 1) // one window
+    assert(Math.abs(tradeVolumePerMinuteETHBTC.head.value.value() - 0.004) < 0.0001)
+  }
+
+  test("Topology should compute correct traded volume per symbol per hour") {
+    // Given
+    val now: Instant = Instant.now().truncatedTo(ChronoUnit.HOURS)
+    val nowPlusOneHour = now.plus(Duration.ofHours(1))
+
+    val trades: List[(Trade, Instant)] = List(
+      (
+        Trade("trade", 123456785000L, "BNBBTC", 12345, "0.001", "100", 88, 50, 123456785000L, true, true),
+        now
+      ),
+      (
+        Trade("trade", 123456785500L, "BNBBTC", 12346, "0.002", "150", 89, 51, 123456785500L, false, true),
+        now.plus(Duration.ofMinutes(30))
+      ),
+      (
+        Trade("trade", 123456791000L, "BNBBTC", 12347, "0.003", "200", 90, 52, 123456791000L, true, true),
+        now.plus(Duration.ofMinutes(59))
+      ),
+      (
+        Trade("trade", 123456785000L, "ETHBTC", 12348, "0.004", "250", 91, 53, 123456785000L, true, true),
+        nowPlusOneHour.plus(Duration.ofMinutes(30))
+      )
+    )
+
+    // When
+    tradeTopic.pipeRecordList(
+      trades.map { case (trade, ts) => new TestRecord(trade.s, trade, ts) }.asJava
+    )
+
+    // Then
+    val fromTime = now
+    val toTime = nowPlusOneHour.plus(Duration.ofHours(1))
+
+    // Fetch records from the hour window store
+    val tradeVolumePerHourBNBBTC = tradeVolumePerHourStore.fetch("BNBBTC", fromTime, toTime).asScala.toList
+    assert(tradeVolumePerHourBNBBTC.size == 1) // one window
+    assert(Math.abs(tradeVolumePerHourBNBBTC.head.value.value() - 0.006) < 0.0001) // 0.001 + 0.002 + 0.003
+
+    val tradeVolumePerHourETHBTC = tradeVolumePerHourStore.fetch("ETHBTC", fromTime, toTime).asScala.toList
+    assert(tradeVolumePerHourETHBTC.size == 1) // one window
+    assert(Math.abs(tradeVolumePerHourETHBTC.head.value.value() - 0.004) < 0.0001)
   }
 
 }
