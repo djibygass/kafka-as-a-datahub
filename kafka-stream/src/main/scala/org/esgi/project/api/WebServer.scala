@@ -67,6 +67,7 @@ object WebServer extends PlayJsonSupport {
             val now: Instant = Instant.now()
             val oneHourAgo = now.minusSeconds(3600)
 
+            // Store pour le volume des trades
             val tradeVolumeStore: ReadOnlyWindowStore[String, Double] =
               streams.store(
                 StoreQueryParameters.fromNameAndType(
@@ -74,24 +75,26 @@ object WebServer extends PlayJsonSupport {
                   QueryableStoreTypes.windowStore[String, Double]()
                 )
               )
-            val averagePriceStore: ReadOnlyWindowStore[String, Double] =
+
+            // Store pour le prix moyen
+            val averagePriceStore: ReadOnlyWindowStore[String, (Double, Long)] =
               streams.store(
                 StoreQueryParameters.fromNameAndType(
                   StreamProcessing.averagePricePerMinuteStoreName,
-                  QueryableStoreTypes.windowStore[String, Double]()
+                  QueryableStoreTypes.windowStore[String, (Double, Long)]()
                 )
               )
 
             val tradeVolumes = tradeVolumeStore.fetch(pair, oneHourAgo, now).asScala
             val averagePrices = averagePriceStore.fetch(pair, oneHourAgo, now).asScala
 
-            val totalTrades = tradeVolumes.map(_.value).sum
             val totalVolume = tradeVolumes.map(_.value).sum
-            val averagePrice = if (averagePrices.nonEmpty) averagePrices.map(_.value).sum / averagePrices.size else 0
+            val totalPrices = averagePrices.map(_.value._1).sum
+            val countPrices = averagePrices.map(_.value._2).sum
+            val averagePrice = if (countPrices != 0) totalPrices / countPrices else 0
 
             Json.obj(
               "pair" -> pair,
-              "trades_over_last_hour" -> totalTrades,
               "volume_over_last_hour" -> totalVolume,
               "average_price_over_last_hour" -> averagePrice
             )
