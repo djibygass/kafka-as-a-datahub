@@ -9,8 +9,8 @@ case class Trade(
     t: Long, // Trade ID
     p: String, // Price
     q: String, // Quantity
-    b: Long, // Buyer order ID
-    a: Long, // Seller order ID
+    //b: Long, // Buyer order ID
+    //a: Long, // Seller order ID
     T: Long, // Trade time
     m: Boolean, // Is the buyer the market maker?
     M: Boolean // Ignore

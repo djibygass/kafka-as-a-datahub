@@ -3,16 +3,11 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import com.typesafe.config.{Config, ConfigFactory}
-import org.apache.kafka.common.serialization.Serdes
-import org.apache.kafka.streams.{KafkaStreams, StreamsBuilder}
-import org.apache.kafka.streams.scala.Serdes._
-import org.apache.kafka.streams.scala.ImplicitConversions._
-import org.apache.kafka.streams.scala.kstream._
+import org.apache.kafka.streams.KafkaStreams
 import org.esgi.project.api.WebServer
 import org.slf4j.{Logger, LoggerFactory}
 import org.esgi.project.streaming.StreamProcessing
 
-import java.util.Properties
 import scala.concurrent.ExecutionContextExecutor
 
 object Main {
@@ -23,28 +18,8 @@ object Main {
   val config: Config = ConfigFactory.load()
 
   def main(args: Array[String]): Unit = {
-    // Kafka Streams configuration
-    val props = new Properties()
-    props.put("bootstrap.servers", "localhost:9092")
-    props.put("application.id", "my-streams-app")
-    props.put("default.key.serde", Serdes.String().getClass.getName)
-    props.put("default.value.serde", Serdes.String().getClass.getName)
-
-    val builder = new StreamsBuilder()
-    val inputTopic = "trades"
-
-    val stream: KStream[String, String] = builder.stream[String, String](inputTopic)
-
-    stream.foreach((key, value) => {
-      //println(s"Received record: key = $key, value = $value")
-      // Aquí puedes agregar la lógica de procesamiento de tu stream
-    })
-
-    val topology = builder.build()
-    val streams = new KafkaStreams(topology, props)
-
-    // Iniciar Kafka Streams
-    streams.start()
+    // Utiliser les propriétés et le flux de StreamProcessing
+    val streams: KafkaStreams = StreamProcessing.run()
 
     // Iniciar servidor HTTP con las rutas definidas en WebServer
     startServer(streams)
