@@ -88,6 +88,65 @@ object WebServer extends PlayJsonSupport {
           }
         }
       },
+//      path("trades" / Segment / "candles") { pair: String =>
+//        parameters("from".as[String], "to".as[String]) { (from, to) =>
+//          get {
+//            complete {
+//              val fromInstant = Instant.parse(from)
+//              val toInstant = Instant.parse(to)
+//
+//              val ohlcStore: ReadOnlyWindowStore[String, (Double, Double, Double, Double)] =
+//                streams.store(
+//                  StoreQueryParameters.fromNameAndType(
+//                    StreamProcessing.ohlcPerMinuteStoreName,
+//                    QueryableStoreTypes.windowStore[String, (Double, Double, Double, Double)]()
+//                  )
+//                )
+//
+//              val tradeVolumeStore: ReadOnlyWindowStore[String, Double] =
+//                streams.store(
+//                  StoreQueryParameters.fromNameAndType(
+//                    StreamProcessing.tradeVolumePerMinuteStoreName,
+//                    QueryableStoreTypes.windowStore[String, Double]()
+//                  )
+//                )
+//
+//              val ohlcValues = ohlcStore.fetch(pair, fromInstant, toInstant).asScala
+//              val tradeVolumes = tradeVolumeStore.fetch(pair, fromInstant, toInstant).asScala
+//
+//              val ohlcValuesList = ohlcStore.fetch(pair, fromInstant, toInstant).asScala.toList
+//              val tradeVolumesList = tradeVolumeStore.fetch(pair, fromInstant, toInstant).asScala.toList
+//
+//              println(ohlcValuesList, tradeVolumesList)
+//
+//              if (ohlcValuesList.nonEmpty) {
+//                println("First ohlcValue record:", ohlcValuesList.head)
+//                val (open, high, low, close) = ohlcValuesList.head.value
+//                println("First ohlcValue record values:", open, high, low, close)
+//              }
+//
+//              val candles = ohlcValues.map { record =>
+//                println("test")
+////                val date = ZonedDateTime.ofInstant(record.key.window().startTime(), ZoneOffset.UTC).toString
+//                println("record", record)
+//                val (open, high, low, close) = record.value
+//                println("values", open, high, low, close)
+////                val volume = tradeVolumes
+////                  .find(_.key.window().startTime() == record.key.window().startTime())
+////                  .map(_.value)
+////                  .getOrElse(0.0)
+//
+//                Candle(open, close, low, high)
+//              }.toSeq // Convertir en Seq pour JSON
+//
+//              Json.obj(
+//                "pair" -> pair,
+//                "candles" -> candles
+//              )
+//            }
+//          }
+//        }
+//      }
       path("trades" / Segment / "candles") { pair: String =>
         parameters("from".as[String], "to".as[String]) { (from, to) =>
           get {
@@ -111,21 +170,21 @@ object WebServer extends PlayJsonSupport {
                   )
                 )
 
-              val ohlcValues = ohlcStore.fetch(pair, fromInstant, toInstant).asScala
-              val tradeVolumes = tradeVolumeStore.fetch(pair, fromInstant, toInstant).asScala
+              val ohlcValuesList = ohlcStore.fetch(pair, fromInstant, toInstant).asScala.toList
+              val tradeVolumesList = tradeVolumeStore.fetch(pair, fromInstant, toInstant).asScala.toList
 
-              println(ohlcValues.toList)
-              println(tradeVolumes.toList)
+              println(ohlcValuesList)
+              println(tradeVolumesList)
 
-              val candles = ohlcValues.map { record =>
-//                val date = ZonedDateTime.ofInstant(record.key.window().startTime(), ZoneOffset.UTC).toString
+              val candles = ohlcValuesList.map { record =>
+                val date = ZonedDateTime.ofInstant(Instant.ofEpochMilli(record.key.toLong), ZoneOffset.UTC).toString
                 val (open, high, low, close) = record.value
-//                val volume = tradeVolumes
-//                  .find(_.key.window().startTime() == record.key.window().startTime())
-//                  .map(_.value)
-//                  .getOrElse(0.0)
+                val volume = tradeVolumesList
+                  .find(_.key.toLong == record.key.toLong)
+                  .map(_.value)
+                  .getOrElse(0.0)
 
-                Candle(open, close, low, high)
+                Candle(date, open, close, low, high, volume)
               }.toSeq // Convertir en Seq pour JSON
 
               Json.obj(
