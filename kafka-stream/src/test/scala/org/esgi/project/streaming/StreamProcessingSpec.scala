@@ -2,17 +2,48 @@ package org.esgi.project.streaming
 
 import io.github.azhur.kafka.serde.PlayJsonSupport
 import org.apache.kafka.common.serialization.Serde
-import org.apache.kafka.streams.TopologyTestDriver
+import org.apache.kafka.streams.{TestInputTopic, TopologyTestDriver}
 import org.apache.kafka.streams.scala.serialization.Serdes
 import org.apache.kafka.streams.state.KeyValueStore
 import org.apache.kafka.streams.test.TestRecord
 import org.esgi.project.streaming.models.Trade
+import org.scalatest.BeforeAndAfterEach
 import org.scalatest.funsuite.AnyFunSuite
-import play.api.libs.json.Json
 
 import scala.jdk.CollectionConverters._
 
-class StreamProcessingSpec extends AnyFunSuite with PlayJsonSupport {
+class StreamProcessingSpec extends AnyFunSuite with PlayJsonSupport with BeforeAndAfterEach {
+  var topologyTestDriver: TopologyTestDriver = _
+  var tradeTopic: TestInputTopic[String, Trade] = _
+  var tradeCountStore: KeyValueStore[String, Long] = _
+
+  override def beforeEach(): Unit = {
+    // Initialize the TopologyTestDriver and other resources before each test
+    topologyTestDriver = new TopologyTestDriver(
+      StreamProcessing.builder.build(),
+      StreamProcessing.buildProperties
+    )
+
+    tradeTopic = topologyTestDriver
+      .createInputTopic(
+        StreamProcessing.tradeTopic,
+        Serdes.stringSerde.serializer(),
+        implicitly[Serde[Trade]].serializer()
+      )
+
+    tradeCountStore = topologyTestDriver
+      .getKeyValueStore[String, Long](
+        StreamProcessing.tradeCountStoreName
+      )
+  }
+
+  override def afterEach(): Unit = {
+    // Close the TopologyTestDriver after each test
+    if (topologyTestDriver != null) {
+      topologyTestDriver.close()
+    }
+  }
+
   test("Topology should compute a correct trade count per symbol") {
     // Given
     val trades = List(
@@ -20,24 +51,6 @@ class StreamProcessingSpec extends AnyFunSuite with PlayJsonSupport {
       Trade("trade", 123456790, "BNBBTC", 12346, "0.002", "150", 89, 51, 123456786, false, true),
       Trade("trade", 123456791, "ETHBTC", 12347, "0.003", "200", 90, 52, 123456787, true, true)
     )
-
-    val topologyTestDriver = new TopologyTestDriver(
-      StreamProcessing.builder.build(),
-      StreamProcessing.buildProperties
-    )
-
-    val tradeTopic = topologyTestDriver
-      .createInputTopic(
-        StreamProcessing.tradeTopic,
-        Serdes.stringSerde.serializer(),
-        implicitly[Serde[Trade]].serializer()
-      )
-
-    val tradeCountStore: KeyValueStore[String, Long] =
-      topologyTestDriver
-        .getKeyValueStore[String, Long](
-          StreamProcessing.tradeCountStoreName
-        )
 
     // When
     tradeTopic.pipeRecordList(
