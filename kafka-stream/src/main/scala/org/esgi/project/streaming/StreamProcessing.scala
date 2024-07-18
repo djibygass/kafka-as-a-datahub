@@ -7,6 +7,7 @@ import org.apache.kafka.streams.kstream.{TimeWindows, Windowed}
 import org.apache.kafka.streams.scala._
 import org.apache.kafka.streams.scala.kstream.{KStream, KTable, Materialized}
 import org.apache.kafka.streams.{KafkaStreams, StreamsConfig}
+import org.apache.kafka.streams.state.Stores
 import org.esgi.project.streaming.models._
 
 import java.time.Duration
@@ -29,6 +30,8 @@ object StreamProcessing extends PlayJsonSupport {
   val tradeCountPerMinuteStoreName = "trade-count-per-minute-store"
   val tradeVolumePerMinuteStoreName = "trade-volume-per-minute-store"
   val tradeVolumePerHourStoreName = "trade-volume-per-hour-store"
+  val averagePricePerMinuteStoreName = "average-price-per-minute-store"
+  val ohlcPerMinuteStoreName = "ohlc-per-minute-store"
 
   val trades: KStream[String, Trade] = builder.stream[String, Trade](tradeTopic)
 
@@ -55,16 +58,39 @@ object StreamProcessing extends PlayJsonSupport {
     .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofHours(1)))
     .aggregate(0.0)((_, trade, total) => total + trade.q.toDouble)(Materialized.as(tradeVolumePerHourStoreName))
 
+  // Calculate average price per symbol per minute
+  val totalPricesAndCounts: KTable[Windowed[String], (Double, Long)] = trades
+    .groupBy((_, trade) => trade.s)
+    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)))
+    .aggregate[(Double, Long)](
+      (0.0, 0L)
+    )((_, trade, aggregate) => (aggregate._1 + trade.p.toDouble, aggregate._2 + 1))(
+      Materialized.as(averagePricePerMinuteStoreName)
+    )
+
+  val averagePricesPerMinute: KTable[Windowed[String], Double] = totalPricesAndCounts
+    .mapValues { aggregate => aggregate match { case (totalPrice, count) => totalPrice / count } }
+
+  // Calculate OHLC (Open, High, Low, Close) per symbol per minute
+  val ohlcPerMinute: KTable[Windowed[String], (Double, Double, Double, Double)] = trades
+    .groupBy((_, trade) => trade.s)
+    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)))
+    .aggregate[(Double, Double, Double, Double)](
+      (Double.MaxValue, Double.MinValue, Double.MaxValue, Double.MinValue)
+    )((_, trade, aggregate) => {
+      val openPrice = if (aggregate._1 == Double.MaxValue) trade.p.toDouble else aggregate._1
+      val highPrice = Math.max(aggregate._2, trade.p.toDouble)
+      val lowPrice = Math.min(aggregate._3, trade.p.toDouble)
+      val closePrice = trade.p.toDouble
+      (openPrice, highPrice, lowPrice, closePrice)
+    })(Materialized.as(ohlcPerMinuteStoreName))
+
   def run(): KafkaStreams = {
     val streams: KafkaStreams = new KafkaStreams(builder.build(), props)
     streams.start()
 
     // Add shutdown hook to respond to SIGTERM and gracefully close Kafka Streams
-    Runtime.getRuntime.addShutdownHook(new Thread(new Runnable() {
-      override def run(): Unit = {
-        streams.close()
-      }
-    }))
+    Runtime.getRuntime.addShutdownHook(new Thread(() => streams.close()))
     streams
   }
 
