@@ -7,6 +7,7 @@ import org.apache.kafka.streams.kstream.{TimeWindows, Windowed}
 import org.apache.kafka.streams.scala._
 import org.apache.kafka.streams.scala.kstream.{KStream, KTable, Materialized}
 import org.apache.kafka.streams.{KafkaStreams, StreamsConfig}
+import org.apache.kafka.streams.state.Stores
 import org.esgi.project.streaming.models._
 
 import java.time.Duration
@@ -29,6 +30,7 @@ object StreamProcessing extends PlayJsonSupport {
   val tradeCountPerMinuteStoreName = "trade-count-per-minute-store"
   val tradeVolumePerMinuteStoreName = "trade-volume-per-minute-store"
   val tradeVolumePerHourStoreName = "trade-volume-per-hour-store"
+  val averagePricePerMinuteStoreName = "average-price-per-minute-store"
 
   val trades: KStream[String, Trade] = builder.stream[String, Trade](tradeTopic)
 
@@ -55,16 +57,25 @@ object StreamProcessing extends PlayJsonSupport {
     .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofHours(1)))
     .aggregate(0.0)((_, trade, total) => total + trade.q.toDouble)(Materialized.as(tradeVolumePerHourStoreName))
 
+  // Calculate average price per symbol per minute
+  val totalPricesAndCounts: KTable[Windowed[String], (Double, Long)] = trades
+    .groupBy((_, trade) => trade.s)
+    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)))
+    .aggregate[(Double, Long)](
+      (0.0, 0L)
+    )((_, trade, aggregate) => (aggregate._1 + trade.p.toDouble, aggregate._2 + 1))(
+      Materialized.as(averagePricePerMinuteStoreName)
+    )
+
+  val averagePricesPerMinute: KTable[Windowed[String], Double] = totalPricesAndCounts
+    .mapValues { case (totalPrice, count) => totalPrice / count }
+
   def run(): KafkaStreams = {
     val streams: KafkaStreams = new KafkaStreams(builder.build(), props)
     streams.start()
 
     // Add shutdown hook to respond to SIGTERM and gracefully close Kafka Streams
-    Runtime.getRuntime.addShutdownHook(new Thread(new Runnable() {
-      override def run(): Unit = {
-        streams.close()
-      }
-    }))
+    Runtime.getRuntime.addShutdownHook(new Thread(() => streams.close()))
     streams
   }
 
