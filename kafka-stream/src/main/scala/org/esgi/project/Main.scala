@@ -10,6 +10,7 @@ import org.apache.kafka.streams.scala.ImplicitConversions._
 import org.apache.kafka.streams.scala.kstream._
 import org.esgi.project.api.WebServer
 import org.slf4j.{Logger, LoggerFactory}
+import org.esgi.project.streaming.StreamProcessing
 
 import java.util.Properties
 import scala.concurrent.ExecutionContextExecutor
@@ -29,21 +30,21 @@ object Main {
     props.put("default.key.serde", Serdes.String().getClass.getName)
     props.put("default.value.serde", Serdes.String().getClass.getName)
 
-      val builder = new StreamsBuilder()
-      val inputTopic = "trades"
+    val builder = new StreamsBuilder()
+    val inputTopic = "trades"
 
-      val stream: KStream[String, String] = builder.stream[String, String](inputTopic)
+    val stream: KStream[String, String] = builder.stream[String, String](inputTopic)
 
-      stream.foreach((key, value) => {
-        println(s"Received record: key = $key, value = $value")
-        // Aquí puedes agregar la lógica de procesamiento de tu stream
-      })
+    stream.foreach((key, value) => {
+      //println(s"Received record: key = $key, value = $value")
+      // Aquí puedes agregar la lógica de procesamiento de tu stream
+    })
 
-      val topology = builder.build()
-      val streams = new KafkaStreams(topology, props)
+    val topology = builder.build()
+    val streams = new KafkaStreams(topology, props)
 
-      // Iniciar Kafka Streams
-      streams.start()
+    // Iniciar Kafka Streams
+    streams.start()
 
     // Iniciar servidor HTTP con las rutas definidas en WebServer
     startServer(streams)

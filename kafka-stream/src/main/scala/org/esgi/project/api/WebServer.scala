@@ -3,14 +3,16 @@ package org.esgi.project.api
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import de.heikoseeberger.akkahttpplayjson.PlayJsonSupport
-import org.apache.kafka.streams.KafkaStreams
-import org.apache.kafka.streams.state.ReadOnlyKeyValueStore
+import org.apache.kafka.streams.{KafkaStreams, StoreQueryParameters}
+import org.apache.kafka.streams.state.{QueryableStoreTypes, ReadOnlyKeyValueStore, ReadOnlyWindowStore}
 import org.esgi.project.api.models.{MeanLatencyForURLResponse, VisitCountResponse}
 import org.apache.kafka.clients.consumer.{ConsumerConfig, KafkaConsumer}
 import org.apache.kafka.common.serialization.StringDeserializer
+import org.esgi.project.streaming.StreamProcessing
 import org.slf4j.LoggerFactory
 import play.api.libs.json.Json
 
+import java.time.Instant
 import java.util.Properties
 import scala.collection.JavaConverters._
 
@@ -56,6 +58,43 @@ object WebServer extends PlayJsonSupport {
             } finally {
               consumer.close()
             }
+          }
+        }
+      },
+      path("trades" / Segment / "stats") { pair: String =>
+        get {
+          complete {
+            val now: Instant = Instant.now()
+            val oneHourAgo = now.minusSeconds(3600)
+
+            val tradeVolumeStore: ReadOnlyWindowStore[String, Double] =
+              streams.store(
+                StoreQueryParameters.fromNameAndType(
+                  StreamProcessing.tradeVolumePerHourStoreName,
+                  QueryableStoreTypes.windowStore[String, Double]()
+                )
+              )
+            val averagePriceStore: ReadOnlyWindowStore[String, Double] =
+              streams.store(
+                StoreQueryParameters.fromNameAndType(
+                  StreamProcessing.averagePricePerMinuteStoreName,
+                  QueryableStoreTypes.windowStore[String, Double]()
+                )
+              )
+
+            val tradeVolumes = tradeVolumeStore.fetch(pair, oneHourAgo, now).asScala
+            val averagePrices = averagePriceStore.fetch(pair, oneHourAgo, now).asScala
+
+            val totalTrades = tradeVolumes.map(_.value).sum
+            val totalVolume = tradeVolumes.map(_.value).sum
+            val averagePrice = if (averagePrices.nonEmpty) averagePrices.map(_.value).sum / averagePrices.size else 0
+
+            Json.obj(
+              "pair" -> pair,
+              "trades_over_last_hour" -> totalTrades,
+              "volume_over_last_hour" -> totalVolume,
+              "average_price_over_last_hour" -> averagePrice
+            )
           }
         }
       }
