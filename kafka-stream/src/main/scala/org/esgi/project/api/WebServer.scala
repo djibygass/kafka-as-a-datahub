@@ -71,14 +71,16 @@ object WebServer extends PlayJsonSupport {
                 )
               )
 
-            val tradeVolumes = tradeVolumeStore.fetch(pair, oneHourAgo, now).asScala
-            val averagePrices = averagePriceStore.fetch(pair, oneHourAgo, now).asScala
+            val tradeVolumesList = tradeVolumeStore.fetch(pair, oneHourAgo, now).asScala.toList
+            val averagePricesList = averagePriceStore.fetch(pair, oneHourAgo, now).asScala.toList
 
-            val totalVolume = tradeVolumes.map(_.value).sum
-            val totalPrices = averagePrices.map(_.value._1).sum
-            val countPrices = averagePrices.map(_.value._2).sum
+            println(averagePricesList)
+
+            val totalVolume = tradeVolumesList.map(_.value).sum
+            val totalPrices = averagePricesList.map(_.value._1).sum
+            val countPrices = averagePricesList.map(_.value._2).sum
             val averagePrice = if (countPrices != 0) totalPrices / countPrices else 0
-            // Average price est egale a 0 a cause de countPrices qui est a 0
+
             Json.obj(
               "pair" -> pair,
               "trades_over_last_hour" -> countPrices,
@@ -88,65 +90,6 @@ object WebServer extends PlayJsonSupport {
           }
         }
       },
-//      path("trades" / Segment / "candles") { pair: String =>
-//        parameters("from".as[String], "to".as[String]) { (from, to) =>
-//          get {
-//            complete {
-//              val fromInstant = Instant.parse(from)
-//              val toInstant = Instant.parse(to)
-//
-//              val ohlcStore: ReadOnlyWindowStore[String, (Double, Double, Double, Double)] =
-//                streams.store(
-//                  StoreQueryParameters.fromNameAndType(
-//                    StreamProcessing.ohlcPerMinuteStoreName,
-//                    QueryableStoreTypes.windowStore[String, (Double, Double, Double, Double)]()
-//                  )
-//                )
-//
-//              val tradeVolumeStore: ReadOnlyWindowStore[String, Double] =
-//                streams.store(
-//                  StoreQueryParameters.fromNameAndType(
-//                    StreamProcessing.tradeVolumePerMinuteStoreName,
-//                    QueryableStoreTypes.windowStore[String, Double]()
-//                  )
-//                )
-//
-//              val ohlcValues = ohlcStore.fetch(pair, fromInstant, toInstant).asScala
-//              val tradeVolumes = tradeVolumeStore.fetch(pair, fromInstant, toInstant).asScala
-//
-//              val ohlcValuesList = ohlcStore.fetch(pair, fromInstant, toInstant).asScala.toList
-//              val tradeVolumesList = tradeVolumeStore.fetch(pair, fromInstant, toInstant).asScala.toList
-//
-//              println(ohlcValuesList, tradeVolumesList)
-//
-//              if (ohlcValuesList.nonEmpty) {
-//                println("First ohlcValue record:", ohlcValuesList.head)
-//                val (open, high, low, close) = ohlcValuesList.head.value
-//                println("First ohlcValue record values:", open, high, low, close)
-//              }
-//
-//              val candles = ohlcValues.map { record =>
-//                println("test")
-////                val date = ZonedDateTime.ofInstant(record.key.window().startTime(), ZoneOffset.UTC).toString
-//                println("record", record)
-//                val (open, high, low, close) = record.value
-//                println("values", open, high, low, close)
-////                val volume = tradeVolumes
-////                  .find(_.key.window().startTime() == record.key.window().startTime())
-////                  .map(_.value)
-////                  .getOrElse(0.0)
-//
-//                Candle(open, close, low, high)
-//              }.toSeq // Convertir en Seq pour JSON
-//
-//              Json.obj(
-//                "pair" -> pair,
-//                "candles" -> candles
-//              )
-//            }
-//          }
-//        }
-//      }
       path("trades" / Segment / "candles") { pair: String =>
         parameters("from".as[String], "to".as[String]) { (from, to) =>
           get {
