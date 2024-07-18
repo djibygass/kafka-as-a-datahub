@@ -27,6 +27,8 @@ object StreamProcessing extends PlayJsonSupport {
   val tradeTopic = "trades"
   val tradeCountStoreName = "trade-count-store"
   val tradeCountPerMinuteStoreName = "trade-count-per-minute-store"
+  val tradeVolumePerMinuteStoreName = "trade-volume-per-minute-store"
+  val tradeVolumePerHourStoreName = "trade-volume-per-hour-store"
 
   val trades: KStream[String, Trade] = builder.stream[String, Trade](tradeTopic)
 
@@ -40,6 +42,18 @@ object StreamProcessing extends PlayJsonSupport {
     .groupBy((_, trade) => trade.s)
     .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)).advanceBy(Duration.ofMinutes(1)))
     .count()(Materialized.as(tradeCountPerMinuteStoreName))
+
+  // Calculate traded volume per symbol per minute
+  val tradeVolumePerMinute: KTable[Windowed[String], Double] = trades
+    .groupBy((_, trade) => trade.s)
+    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)))
+    .aggregate(0.0)((_, trade, total) => total + trade.q.toDouble)(Materialized.as(tradeVolumePerMinuteStoreName))
+
+  // Calculate traded volume per symbol per hour
+  val tradeVolumePerHour: KTable[Windowed[String], Double] = trades
+    .groupBy((_, trade) => trade.s)
+    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofHours(1)))
+    .aggregate(0.0)((_, trade, total) => total + trade.q.toDouble)(Materialized.as(tradeVolumePerHourStoreName))
 
   def run(): KafkaStreams = {
     val streams: KafkaStreams = new KafkaStreams(builder.build(), props)
