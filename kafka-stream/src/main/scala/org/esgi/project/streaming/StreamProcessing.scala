@@ -69,7 +69,7 @@ object StreamProcessing extends PlayJsonSupport {
     )
 
   val averagePricesPerMinute: KTable[Windowed[String], Double] = totalPricesAndCounts
-    .mapValues { case (totalPrice, count) => totalPrice / count }
+    .mapValues { aggregate => aggregate match { case (totalPrice, count) => totalPrice / count } }
 
   // Calculate OHLC (Open, High, Low, Close) per symbol per minute
   val ohlcPerMinute: KTable[Windowed[String], (Double, Double, Double, Double)] = trades
