@@ -18,12 +18,9 @@ object Main {
   val config: Config = ConfigFactory.load()
 
   def main(args: Array[String]): Unit = {
-    // Utiliser les propriétés et le flux de StreamProcessing
     val streams: KafkaStreams = StreamProcessing.run()
 
-    // Iniciar servidor HTTP con las rutas definidas en WebServer
     startServer(streams)
-
     logger.info(s"App started")
   }
 

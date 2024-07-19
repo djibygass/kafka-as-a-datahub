@@ -22,7 +22,6 @@ object StreamProcessing extends PlayJsonSupport {
 
   private val props: Properties = buildProperties()
 
-  // defining processing graph
   val builder: StreamsBuilder = new StreamsBuilder
 
   val tradeTopic = "trades"
@@ -35,46 +34,28 @@ object StreamProcessing extends PlayJsonSupport {
 
   val trades: KStream[String, Trade] = builder.stream[String, Trade](tradeTopic)
 
-  // Count trades per symbol
-  val tradeCounts: KTable[String, Long] = trades
-    .groupBy((_, trade) => trade.s)
-    .count()(Materialized.as(tradeCountStoreName))
-
-  // Count trades per symbol per minute
-  val tradeCountsPerMinute: KTable[Windowed[String], Long] = trades
-    .groupBy((_, trade) => trade.s)
-    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)).advanceBy(Duration.ofMinutes(1)))
-    .count()(Materialized.as(tradeCountPerMinuteStoreName))
-
-  // Calculate traded volume per symbol per minute
   val tradeVolumePerMinute: KTable[Windowed[String], Double] = trades
     .groupBy((_, trade) => trade.s)
-    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)))
+    .windowedBy(TimeWindows.ofSizeAndGrace(Duration.ofMinutes(1), Duration.ofHours(2)))
     .aggregate(0.0)((_, trade, total) => total + trade.q.toDouble)(Materialized.as(tradeVolumePerMinuteStoreName))
 
-  // Calculate traded volume per symbol per hour
   val tradeVolumePerHour: KTable[Windowed[String], Double] = trades
     .groupBy((_, trade) => trade.s)
-    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofHours(1)))
+    .windowedBy(TimeWindows.ofSizeAndGrace(Duration.ofHours(1), Duration.ofHours(12)))
     .aggregate(0.0)((_, trade, total) => total + trade.q.toDouble)(Materialized.as(tradeVolumePerHourStoreName))
 
-  // Calculate average price per symbol per minute
   val totalPricesAndCounts: KTable[Windowed[String], (Double, Long)] = trades
     .groupBy((_, trade) => trade.s)
-    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)))
+    .windowedBy(TimeWindows.ofSizeAndGrace(Duration.ofMinutes(1), Duration.ofHours(2)))
     .aggregate[(Double, Long)](
       (0.0, 0L)
     )((_, trade, aggregate) => (aggregate._1 + trade.p.toDouble, aggregate._2 + 1))(
       Materialized.as(averagePricePerMinuteStoreName)
     )
 
-  val averagePricesPerMinute: KTable[Windowed[String], Double] = totalPricesAndCounts
-    .mapValues { aggregate => aggregate match { case (totalPrice, count) => totalPrice / count } }
-
-  // Calculate OHLC (Open, High, Low, Close) per symbol per minute
   val ohlcPerMinute: KTable[Windowed[String], (Double, Double, Double, Double)] = trades
     .groupBy((_, trade) => trade.s)
-    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)))
+    .windowedBy(TimeWindows.ofSizeAndGrace(Duration.ofMinutes(1), Duration.ofHours(2)))
     .aggregate[(Double, Double, Double, Double)](
       (Double.MaxValue, Double.MinValue, Double.MaxValue, Double.MinValue)
     )((_, trade, aggregate) => {
@@ -85,16 +66,28 @@ object StreamProcessing extends PlayJsonSupport {
       (openPrice, highPrice, lowPrice, closePrice)
     })(Materialized.as(ohlcPerMinuteStoreName))
 
+  // Pour les tests de topologie
+
+  //  val tradeCounts: KTable[String, Long] = trades
+  //    .groupBy((_, trade) => trade.s)
+  //    .count()(Materialized.as(tradeCountStoreName))
+
+  //  val averagePricesPerMinute: KTable[Windowed[String], Double] = totalPricesAndCounts
+  //    .mapValues { aggregate => aggregate match { case (totalPrice, count) => totalPrice / count } }
+
+  //  val tradeCountsPerMinute: KTable[Windowed[String], Long] = trades
+  //    .groupBy((_, trade) => trade.s)
+  //    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)).advanceBy(Duration.ofMinutes(1)))
+  //    .count()(Materialized.as(tradeCountPerMinuteStoreName))
+
   def run(): KafkaStreams = {
     val streams: KafkaStreams = new KafkaStreams(builder.build(), props)
     streams.start()
 
-    // Add shutdown hook to respond to SIGTERM and gracefully close Kafka Streams
     Runtime.getRuntime.addShutdownHook(new Thread(() => streams.close()))
     streams
   }
 
-  // auto loader from properties file in project
   def buildProperties(appName: Option[String] = None): Properties = {
     val properties = new Properties()
     properties.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092")

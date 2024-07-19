@@ -55,7 +55,6 @@ object WebServer extends PlayJsonSupport {
             val now: Instant = Instant.now()
             val oneHourAgo = now.minusSeconds(3600)
 
-            // Store pour le volume des trades
             val tradeVolumeStore: ReadOnlyWindowStore[String, Double] =
               streams.store(
                 StoreQueryParameters.fromNameAndType(
@@ -64,7 +63,6 @@ object WebServer extends PlayJsonSupport {
                 )
               )
 
-            // Store pour le prix moyen
             val averagePriceStore: ReadOnlyWindowStore[String, (Double, Long)] =
               streams.store(
                 StoreQueryParameters.fromNameAndType(
@@ -75,8 +73,6 @@ object WebServer extends PlayJsonSupport {
 
             val tradeVolumesList = tradeVolumeStore.fetch(pair, oneHourAgo, now).asScala.toList
             val averagePricesList = averagePriceStore.fetch(pair, oneHourAgo, now).asScala.toList
-
-            println(averagePricesList)
 
             val totalVolume = tradeVolumesList.map(_.value).sum
             val totalPrices = averagePricesList.map(_.value._1).sum
@@ -92,63 +88,12 @@ object WebServer extends PlayJsonSupport {
           }
         }
       },
-//      path("trades" / Segment / "candles") { pair: String =>
-//        parameters("from".as[String], "to".as[String]) { (from, to) =>
-//          get {
-//            complete {
-//              val fromInstant = Instant.parse(from)
-//              val toInstant = Instant.parse(to)
-//
-//              val ohlcStore: ReadOnlyWindowStore[String, (Double, Double, Double, Double)] =
-//                streams.store(
-//                  StoreQueryParameters.fromNameAndType(
-//                    StreamProcessing.ohlcPerMinuteStoreName,
-//                    QueryableStoreTypes.windowStore[String, (Double, Double, Double, Double)]()
-//                  )
-//                )
-//
-//              val tradeVolumeStore: ReadOnlyWindowStore[String, Double] =
-//                streams.store(
-//                  StoreQueryParameters.fromNameAndType(
-//                    StreamProcessing.tradeVolumePerMinuteStoreName,
-//                    QueryableStoreTypes.windowStore[String, Double]()
-//                  )
-//                )
-//
-//              val ohlcValuesList = ohlcStore.fetch(pair, fromInstant, toInstant).asScala.toList
-//              val tradeVolumesList = tradeVolumeStore.fetch(pair, fromInstant, toInstant).asScala.toList
-//
-//              println(ohlcValuesList)
-//              println(tradeVolumesList)
-//
-//              val candles = ohlcValuesList.map { record =>
-//                val date = ZonedDateTime.ofInstant(Instant.ofEpochMilli(record.key.toLong), ZoneOffset.UTC).toString
-//                val (open, high, low, close) = record.value
-//                val volume = tradeVolumesList
-//                  .find(_.key.toLong == record.key.toLong)
-//                  .map(_.value)
-//                  .getOrElse(0.0)
-//
-//                Candle(date, open, close, low, high, volume)
-//              }.toSeq // Convertir en Seq pour JSON
-//
-//              Json.obj(
-//                "pair" -> pair,
-//                "candles" -> candles
-//              )
-//            }
-//          }
-//        }
-//      }
       path("trades" / Segment / "candles") { pair: String =>
         parameters("from".as[String], "to".as[String]) { (from, to) =>
           get {
             complete {
-              val fromInstant = Instant.parse(from)
-              val toInstant = Instant.parse(to)
-
-              println(s"Checking data for pair: $pair from $fromInstant to $toInstant")
-              println(s"Querying from ${fromInstant.toEpochMilli} to ${toInstant.toEpochMilli}")
+              val fromInstant = Instant.parse(from).truncatedTo(ChronoUnit.MINUTES)
+              val toInstant = Instant.parse(to).truncatedTo(ChronoUnit.MINUTES)
 
               val ohlcStore: ReadOnlyWindowStore[String, (Double, Double, Double, Double)] =
                 streams.store(
@@ -166,18 +111,10 @@ object WebServer extends PlayJsonSupport {
                   )
                 )
 
-              val allOhlcData = ohlcStore.all().asScala.toList
-              println(s"All OHLC data: ${allOhlcData.map(kv => s"${kv.key} -> ${kv.value}")}")
-
-              val allVolumeData = tradeVolumeStore.all().asScala.toList
-              println(s"All Volume data: ${allVolumeData.map(kv => s"${kv.key} -> ${kv.value}")}")
-
               val candles = Iterator
-                .iterate(fromInstant)(_.truncatedTo(ChronoUnit.MINUTES).plus(1, ChronoUnit.MINUTES))
-                .takeWhile(_.isBefore(toInstant))
+                .iterate(fromInstant)(_.plus(1, ChronoUnit.MINUTES))
+                .takeWhile(!_.isAfter(toInstant))
                 .flatMap { minute =>
-                  println(s"Checking minute: $minute")
-
                   val ohlcValue = ohlcStore
                     .fetch(pair, minute, minute.plusSeconds(60))
                     .asScala
@@ -191,23 +128,15 @@ object WebServer extends PlayJsonSupport {
                     .headOption
                     .map(_.value)
 
-                  println(s"OHLC value: $ohlcValue")
-                  println(s"Volume value: $volumeValue")
-
                   for {
                     (open, high, low, close) <- ohlcValue
                     volume <- volumeValue
                   } yield {
                     val date = ZonedDateTime.ofInstant(minute, ZoneOffset.UTC).toString
-                    println(
-                      s"Creating candle for window start: $minute with date: $date, open: $open, high: $high, low: $low, close: $close, volume: $volume"
-                    )
                     Candle(date, open, close, low, high, volume)
                   }
                 }
                 .toSeq
-
-              println(s"Number of candles created: ${candles.size}")
 
               Json.obj(
                 "pair" -> pair,
